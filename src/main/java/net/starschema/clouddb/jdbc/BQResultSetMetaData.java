@@ -36,7 +36,7 @@ import org.slf4j.LoggerFactory;
  *
  * @author Horváth Attila
  */
-class BQResultsetMetaData implements ResultSetMetaData {
+class BQResultSetMetaData implements ResultSetMetaData {
 
   TableSchema schema;
   String projectId;
@@ -44,18 +44,18 @@ class BQResultsetMetaData implements ResultSetMetaData {
   QueryResponse result = null;
 
   /** Logger instance */
-  Logger logger = LoggerFactory.getLogger(BQResultsetMetaData.class);
+  Logger logger = LoggerFactory.getLogger(BQResultSetMetaData.class);
 
   /**
    * Constructor that initializes variables
    *
    * @param result the bigquery GetQueryResultsResponse object
    */
-  public BQResultsetMetaData(GetQueryResultsResponse result) {
+  public BQResultSetMetaData(GetQueryResultsResponse result) {
     this(result.getSchema(), result.getJobReference().getProjectId());
   }
 
-  public BQResultsetMetaData(TableSchema schema, String projectId) {
+  public BQResultSetMetaData(TableSchema schema, String projectId) {
     this.schema = schema;
     this.projectId = projectId;
   }

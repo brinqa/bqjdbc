@@ -384,7 +384,7 @@ public class BQForwardOnlyResultSet implements java.sql.ResultSet {
   public String getString(int columnIndex) throws SQLException {
     String rawString = rawString(columnIndex);
 
-    BQResultsetMetaData metadata = getBQResultsetMetaData();
+    BQResultSetMetaData metadata = getBQResultsetMetaData();
     if (metadata.getColumnTypeName(columnIndex).equals("TIMESTAMP")
         && !metadata.getColumnMode(columnIndex).equals("REPEATED")) {
       return DateTimeUtils.formatTimestamp(rawString);
@@ -1050,11 +1050,11 @@ public class BQForwardOnlyResultSet implements java.sql.ResultSet {
    * @return
    * @throws SQLException
    */
-  public BQResultsetMetaData getBQResultsetMetaData() throws SQLException {
+  public BQResultSetMetaData getBQResultsetMetaData() throws SQLException {
     if (this.isClosed()) {
       throw new BQSQLException("This Resultset is Closed");
     }
-    return new BQResultsetMetaData(schema, projectId);
+    return new BQResultSetMetaData(schema, projectId);
   }
 
   /**
