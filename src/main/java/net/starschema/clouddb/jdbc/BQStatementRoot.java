@@ -58,9 +58,11 @@ public abstract class BQStatementRoot {
 
   /** Variable that stores the set query timeout */
   int querytimeout = Integer.MAX_VALUE / 1000 - 1;
+
   /** Instance of log4j.Logger */
   /** Variable stores the time an execute is made */
   long starttime = 0;
+
   /** Variable that stores the max row number which can be stored in the resultset */
   int resultMaxRowCount = Integer.MAX_VALUE - 1;
 

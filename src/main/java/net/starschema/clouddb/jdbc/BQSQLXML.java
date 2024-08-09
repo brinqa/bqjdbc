@@ -58,6 +58,7 @@ class BQSQLXML implements java.sql.SQLXML {
 
   /** Reference for the XML document that will be parsed */
   Document document = null;
+
   /** Indicates wether the SQLXML is readable or not */
   Boolean Readable = true;
 

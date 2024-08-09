@@ -79,6 +79,7 @@ import org.slf4j.LoggerFactory;
 public class BQForwardOnlyResultSet implements java.sql.ResultSet {
 
   Logger logger = LoggerFactory.getLogger(BQForwardOnlyResultSet.class);
+
   /** Reference for holding the current InputStream given back by get methods */
   protected InputStream Strm = null;
 
@@ -96,34 +97,47 @@ public class BQForwardOnlyResultSet implements java.sql.ResultSet {
 
   /** Paging size, the original result will be paged by FETCH_SIZE rows */
   private int FETCH_SIZE = 5000;
+
   /** The Fetched rows count at the original results */
   protected BigInteger fetchPos = BigInteger.ZERO;
+
   /** Are we at the first row? */
   protected boolean AT_FIRST = true;
+
   /** REference for the original statement which created this resultset */
   private Statement Statementreference;
+
   /** schema of results */
   private TableSchema schema;
+
   /** BigQuery Client */
   private Bigquery bigquery;
+
   /** the ProjectId */
   private String projectId;
+
   /** Reference for the Job */
   private @Nullable Job completedJob;
+
   /** The BigQuery query ID; set if the query completed without a Job */
   private final @Nullable String queryId;
+
   /** The total number of bytes processed while creating this ResultSet */
   private final @Nullable Long totalBytesProcessed;
+
   /** Whether the ResultSet came from BigQuery's cache */
   private final @Nullable Boolean cacheHit;
+
   /** Specifies which mode of BI Engine acceleration was performed (if any). */
   private final @Nullable String biEngineMode;
+
   /**
    * In case of DISABLED or PARTIAL bi_engine_mode, these contain the explanatory reasons as to why
    * BI Engine could not accelerate. In case the full query was accelerated, this field is not
    * populated.
    */
   private final @Nullable List<BiEngineReason> biEngineReasons;
+
   /**
    * Cursor position which goes from -1 to FETCH_SIZE then 0 to FETCH_SIZE The -1 is needed because
    * of the while(Result.next() == true) { } iterating method

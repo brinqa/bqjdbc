@@ -20,9 +20,13 @@
  */
 package net.starschema.clouddb.jdbc;
 
+import static net.starschema.clouddb.jdbc.ConnectionUtils.parseArrayQueryParam;
+import static net.starschema.clouddb.jdbc.ConnectionUtils.parseBooleanQueryParam;
+import static net.starschema.clouddb.jdbc.ConnectionUtils.parseIntQueryParam;
+import static net.starschema.clouddb.jdbc.ConnectionUtils.tryParseLabels;
+
 import com.google.api.client.http.HttpTransport;
 import com.google.api.services.bigquery.Bigquery;
-import com.google.common.base.Splitter;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URLDecoder;
@@ -32,7 +36,6 @@ import java.util.*;
 import java.util.concurrent.Executor;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.annotation.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -47,20 +50,21 @@ public class BQConnection implements Connection {
 
   /** Instance log4j.Logger */
   Logger logger;
-  /** The bigquery client to access the service. */
-  private Bigquery bigquery = null;
 
-  private String dataset = null;
+  /** The bigquery client to access the service. */
+  private final Bigquery bigquery;
+
+  private final String dataset;
 
   /** The ProjectId for the connection */
-  private String projectId = null;
+  private final String projectId;
 
   /** Boolean to determine if the Connection is closed */
   private boolean isclosed = false;
 
-  private Long maxBillingBytes;
+  private final Long maxBillingBytes;
 
-  private Integer timeoutMs;
+  private final Integer timeoutMs;
 
   private final Map<String, String> labels;
 
@@ -78,7 +82,7 @@ public class BQConnection implements Connection {
    * href="https://github.com/googleapis/java-bigquery/blob/v2.34.0/google-cloud-bigquery/src/main/java/com/google/cloud/bigquery/QueryJobConfiguration.java#L98-L111">google-cloud-bigquery
    * 2.34.0</a>
    */
-  public static enum JobCreationMode {
+  public enum JobCreationMode {
     /** If unspecified JOB_CREATION_REQUIRED is the default. */
     JOB_CREATION_MODE_UNSPECIFIED,
     /** Default. Job creation is always required. */
@@ -94,19 +98,19 @@ public class BQConnection implements Connection {
      */
     JOB_CREATION_OPTIONAL;
 
-    private JobCreationMode() {}
+    JobCreationMode() {}
   }
 
   /** The job creation mode - */
-  private JobCreationMode jobCreationMode = JobCreationMode.JOB_CREATION_MODE_UNSPECIFIED;
+  private final JobCreationMode jobCreationMode;
+
+  /** List to contain sql warnings in */
+  private final List<SQLWarning> SQLWarningList = new ArrayList<>();
 
   /** getter for useLegacySql */
   public boolean getUseLegacySql() {
     return useLegacySql;
   }
-
-  /** List to contain sql warnings in */
-  private List<SQLWarning> SQLWarningList = new ArrayList<SQLWarning>();
 
   /** String to contain the url except the url prefix */
   private String URLPART = null;
@@ -163,9 +167,8 @@ public class BQConnection implements Connection {
     Properties caseInsensitiveLoginProps = new Properties();
 
     if (loginProp != null) {
-      Iterator props = loginProp.keySet().iterator();
-      while (props.hasNext()) {
-        String prop = (String) props.next();
+      for (Object p : loginProp.keySet()) {
+        String prop = (String) p;
         caseInsensitiveLoginProps.setProperty(prop.toLowerCase(), loginProp.getProperty(prop));
       }
     }
@@ -183,8 +186,10 @@ public class BQConnection implements Connection {
     String userKey = caseInsensitiveProps.getProperty("password");
     String userPath = caseInsensitiveProps.getProperty("path");
 
-    // extract a list of "delegate" service accounts leading to a "target" service account to use
-    // for impersonation. if only a single account is provided, then it will be used as the "target"
+    // extract a list of "delegate" service accounts leading to a "target" service account to
+    // use
+    // for impersonation. if only a single account is provided, then it will be used as the
+    // "target"
     List<String> targetServiceAccounts =
         parseArrayQueryParam(caseInsensitiveProps.getProperty("targetserviceaccount"), ',');
 
@@ -224,6 +229,8 @@ public class BQConnection implements Connection {
       } catch (NumberFormatException e) {
         throw new BQSQLException("Bad number for maxBillingBytes", e);
       }
+    } else {
+      this.maxBillingBytes = null;
     }
 
     // extract UA String
@@ -253,7 +260,8 @@ public class BQConnection implements Connection {
     // Create Connection to BigQuery
     if (serviceAccount) {
       try {
-        // Support for old behavior, passing no actual password, but passing the path as 'password'
+        // Support for old behavior, passing no actual password, but passing the path as
+        // 'password'
         if (userPath == null) {
           userPath = userKey;
           userKey = null;
@@ -272,9 +280,7 @@ public class BQConnection implements Connection {
                 targetServiceAccounts,
                 this.getProjectId());
         this.logger.info("Authorized with service account");
-      } catch (GeneralSecurityException e) {
-        throw new BQSQLException(e);
-      } catch (IOException e) {
+      } catch (GeneralSecurityException | IOException e) {
         throw new BQSQLException(e);
       }
     } else if (oAuthAccessToken != null) {
@@ -313,55 +319,6 @@ public class BQConnection implements Connection {
     logger.debug("The project id for this connections is: " + projectId);
   }
 
-  private static Map<String, String> tryParseLabels(@Nullable String labels) {
-    if (labels == null) {
-      return Collections.emptyMap();
-    }
-    try {
-      return Splitter.on(",").withKeyValueSeparator("=").split(labels);
-    } catch (IllegalArgumentException ex) {
-      return Collections.emptyMap();
-    }
-  }
-
-  /**
-   * Return {@code defaultValue} if {@code paramValue} is null. Otherwise, return true iff {@code
-   * paramValue} is "true" (case-insensitive).
-   */
-  private static boolean parseBooleanQueryParam(@Nullable String paramValue, boolean defaultValue) {
-    return paramValue == null ? defaultValue : Boolean.parseBoolean(paramValue);
-  }
-
-  /**
-   * Return null if {@code paramValue} is null. Otherwise, return an Integer iff {@code paramValue}
-   * can be parsed as a positive int.
-   */
-  private static Integer parseIntQueryParam(String param, @Nullable String paramValue)
-      throws BQSQLException {
-    Integer val = null;
-    if (paramValue != null) {
-      try {
-        val = Integer.parseInt(paramValue);
-        if (val < 0) {
-          throw new BQSQLException(param + " must be positive.");
-        }
-      } catch (NumberFormatException e) {
-        throw new BQSQLException("could not parse " + param + " parameter.", e);
-      }
-    }
-    return val;
-  }
-
-  /**
-   * Return an empty list if {@code string} is null. Otherwise, return an array of strings iff
-   * {@code string} can be parsed as an array when split by {@code delimiter}.
-   */
-  private static List<String> parseArrayQueryParam(@Nullable String string, Character delimiter) {
-    return string == null
-        ? Collections.emptyList()
-        : Arrays.asList(string.split(delimiter + "\\s*"));
-  }
-
   /**
    *
    *
@@ -379,11 +336,11 @@ public class BQConnection implements Connection {
   }
 
   /**
-   * Returns a series of labels to add to every query.
-   * https://cloud.google.com/bigquery/docs/adding-labels#job-label
+   * Returns a series of labels to add to every query. <a
+   * href="https://cloud.google.com/bigquery/docs/adding-labels#job-label">...</a>
    *
-   * <p>A label that has a key with an empty value is used as a tag.
-   * https://cloud.google.com/bigquery/docs/adding-labels#adding_a_tag
+   * <p>A label that has a key with an empty value is used as a tag. <a
+   * href="https://cloud.google.com/bigquery/docs/adding-labels#adding_a_tag">...</a>
    */
   public Map<String, String> getLabels() {
     return this.labels;
@@ -410,7 +367,6 @@ public class BQConnection implements Connection {
   public void close() throws SQLException {
     if (!this.isclosed) {
       this.cancelRunningQueries();
-      this.bigquery = null;
       this.isclosed = true;
     }
   }
@@ -434,11 +390,7 @@ public class BQConnection implements Connection {
   public void commit() throws SQLException {
     if (this.isclosed) {
       throw new BQSQLException("There's no commit in Google BigQuery.\nConnection Status: Closed.");
-    } /*
-      else {
-          throw new BQSQLException(
-                  "There's no commit in Google BigQuery.\nConnection Status: Open.");
-      }*/
+    }
   }
 
   /**
@@ -448,8 +400,6 @@ public class BQConnection implements Connection {
    *
    * <br>
    * Not implemented yet.
-   *
-   * @throws BQSQLException
    */
   @Override
   public Array createArrayOf(String typeName, Object[] elements) throws SQLException {
@@ -485,36 +435,6 @@ public class BQConnection implements Connection {
   @Override
   public Clob createClob() throws SQLException {
     throw new BQSQLException("Not implemented." + "createClob()");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public NClob createNClob() throws SQLException {
-    throw new BQSQLException("Not implemented." + "createNClob()");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public SQLXML createSQLXML() throws SQLException {
-    throw new BQSQLException("Not implemented." + "createSQLXML()");
   }
 
   /**
@@ -577,24 +497,12 @@ public class BQConnection implements Connection {
 
   @Override
   public void setSchema(String schema) {
-    this.dataset = schema;
+    logger.info("Ignoring schema setting: {}", schema);
   }
 
   @Override
-  public String getSchema() throws SQLException {
+  public String getSchema() {
     return getDataSet();
-  }
-
-  public void abort(Executor executor) throws SQLException {
-    throw new BQSQLException("Not implemented.");
-  }
-
-  public void setNetworkTimeout(Executor executor, int milliseconds) throws SQLException {
-    throw new BQSQLException("Not implemented.");
-  }
-
-  public int getNetworkTimeout() throws SQLException {
-    throw new BQSQLException("Not implemented.");
   }
 
   /**
@@ -710,7 +618,7 @@ public class BQConnection implements Connection {
    * @return TRANSACTION_NONE
    */
   @Override
-  public int getTransactionIsolation() throws SQLException {
+  public int getTransactionIsolation() {
     return java.sql.Connection.TRANSACTION_NONE;
   }
 
@@ -729,8 +637,10 @@ public class BQConnection implements Connection {
     throw new BQSQLException("Not implemented." + "getTypeMap()");
   }
 
-  /** @return The URL which is in the JDBC drivers connection URL */
-  public String getURLPART() {
+  /**
+   * @return The URL which is in the JDBC drivers connection URL
+   */
+  public String getURLPart() {
     return this.URLPART;
   }
 
@@ -764,45 +674,19 @@ public class BQConnection implements Connection {
     return forreturn;
   }
 
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * returns the status of isclosed boolean
-   */
+  /** {@inheritDoc} */
   @Override
   public boolean isClosed() throws SQLException {
     return this.isclosed;
   }
 
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * The driver is read only at this stage.
-   *
-   * @return true
-   */
+  /** {@inheritDoc} */
   @Override
-  public boolean isReadOnly() throws SQLException {
+  public boolean isReadOnly() {
     return true;
   }
 
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Sends a query to BigQuery to get all the datasets contained in the project accociated with this
-   * Connection object and checks if it's succeeded
-   *
-   * @throws SQLException
-   */
+  /** {@inheritDoc} */
   @Override
   public boolean isValid(int timeout) throws SQLException {
     if (this.isclosed) {
@@ -811,7 +695,7 @@ public class BQConnection implements Connection {
     if (timeout < 0) {
       throw new BQSQLException(
           "Timeout value can't be negative. ie. it must be 0 or above; timeout value is: "
-              + String.valueOf(timeout));
+              + timeout);
     }
     try {
       this.bigquery.datasets().list(projectId).execute();
@@ -843,97 +727,15 @@ public class BQConnection implements Connection {
    * <h1>Implementation Details:</h1>
    *
    * <br>
-   * We returns the original sql statement
-   *
-   * @return sql - the original statement
-   */
-  @Override
-  public String nativeSQL(String sql) throws SQLException {
-    logger.debug("Function called nativeSQL() " + sql);
-    return sql;
-    // TODO
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public CallableStatement prepareCall(String sql) throws SQLException {
-    throw new BQSQLException("Not implemented." + "prepareCall(string)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency)
-      throws SQLException {
-    throw new BQSQLException("Not implemented." + "prepareCall(String,int,int)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public CallableStatement prepareCall(
-      String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability)
-      throws SQLException {
-    throw new BQSQLException("Not implemented." + "prepareCall(string,int,int,int)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
    * Creates and returns a PreparedStatement object
    *
    * @throws BQSQLException
    */
   @Override
-  public PreparedStatement prepareStatement(String sql) throws SQLException {
-    this.logger.debug(
-        "Creating Prepared Statement project id is: " + projectId + " with parameters:");
+  public PreparedStatement prepareStatement(String sql) {
+    this.logger.debug("Creating Prepared Statement project id is: {} with parameters:", projectId);
     this.logger.debug(sql);
-    PreparedStatement stm = new BQPreparedStatement(sql, projectId, this);
-    return stm;
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public PreparedStatement prepareStatement(String sql, int autoGeneratedKeys) throws SQLException {
-    throw new BQSQLException("Not implemented." + "prepareStatement(string,int)");
+    return new BQPreparedStatement(sql, projectId, this);
   }
 
   /** {@inheritDoc} */
@@ -941,284 +743,12 @@ public class BQConnection implements Connection {
   public PreparedStatement prepareStatement(String sql, int resultSetType, int resultSetConcurrency)
       throws SQLException {
     this.logger.debug(
-        "Creating Prepared Statement"
-            + " project id is: "
-            + projectId
-            + ", resultSetType (int) is: "
-            + String.valueOf(resultSetType)
-            + ", resultSetConcurrency (int) is: "
-            + String.valueOf(resultSetConcurrency)
-            + " with parameters:");
+        "Creating Prepared Statement project id is: {}, resultSetType (int) is: {}, resultSetConcurrency (int) is: {} with parameters:",
+        projectId,
+        resultSetType,
+        resultSetConcurrency);
     this.logger.debug(sql);
-    PreparedStatement stm =
-        new BQPreparedStatement(sql, projectId, this, resultSetType, resultSetConcurrency);
-    return stm;
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public PreparedStatement prepareStatement(
-      String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability)
-      throws SQLException {
-    throw new BQSQLException("Not implemented." + "prepareStatement(String,int,int,int)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public PreparedStatement prepareStatement(String sql, int[] columnIndexes) throws SQLException {
-    throw new BQSQLException("Not implemented." + "prepareStatement(String,int[])");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public PreparedStatement prepareStatement(String sql, String[] columnNames) throws SQLException {
-    throw new BQSQLException("Not implemented." + "prepareStatement(String,String[])");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void releaseSavepoint(Savepoint savepoint) throws SQLException {
-    throw new BQSQLException("Not implemented." + "releaseSavepoint(Savepoint)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void rollback() throws SQLException {
-    logger.debug("function call: rollback() not implemented ");
-    // throw new BQSQLException("Not implemented." + "rollback()");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void rollback(Savepoint savepoint) throws SQLException {
-    throw new BQSQLException("Not implemented." + "rollback(savepoint)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Setter for autoCommitEnabled
-   */
-  @Override
-  public void setAutoCommit(boolean autoCommit) throws SQLException {
-    this.autoCommitEnabled = autoCommit;
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void setCatalog(String catalog) throws SQLException {
-    throw new BQSQLException("Not implemented." + "setCatalog(catalog)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void setClientInfo(Properties properties) throws SQLClientInfoException {
-    SQLClientInfoException e = new SQLClientInfoException();
-    e.setNextException(new BQSQLException("Not implemented. setClientInfo(properties)"));
-    throw e;
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void setClientInfo(String name, String value) throws SQLClientInfoException {
-    SQLClientInfoException e = new SQLClientInfoException();
-    e.setNextException(new BQSQLException("Not implemented. setClientInfo(properties)"));
-    throw e;
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void setHoldability(int holdability) throws SQLException {
-    if (this.isclosed) {
-      throw new BQSQLException("Connection is closed.");
-    }
-    throw new BQSQLException("Not implemented." + "setHoldability(int)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * BigQuery is ReadOnly always so this is a noop
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void setReadOnly(boolean readOnly) throws SQLException {
-    if (this.isClosed()) {
-      throw new BQSQLException("This Connection is Closed");
-    }
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public Savepoint setSavepoint() throws SQLException {
-    throw new BQSQLException("Not implemented." + "setSavepoint()");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public Savepoint setSavepoint(String name) throws SQLException {
-    throw new BQSQLException("Not implemented." + "setSavepoint(String)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void setTransactionIsolation(int level) throws SQLException {
-    throw new BQSQLException("Not implemented." + "setTransactionIsolation(int)");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Not implemented yet.
-   *
-   * @throws BQSQLException
-   */
-  @Override
-  public void setTypeMap(Map<String, Class<?>> map) throws SQLException {
-    throw new BQSQLException("Not implemented." + "setTypeMap(Map<String, Class<?>>");
-  }
-
-  /**
-   *
-   *
-   * <h1>Implementation Details:</h1>
-   *
-   * <br>
-   * Always throws SQLException
-   *
-   * @return nothing
-   * @throws SQLException Always
-   */
-  @Override
-  public <T> T unwrap(Class<T> arg0) throws SQLException {
-    throw new BQSQLException("Not found");
+    return new BQPreparedStatement(sql, projectId, this, resultSetType, resultSetConcurrency);
   }
 
   public void addRunningStatement(BQStatementRoot stmt) {
@@ -1257,5 +787,146 @@ public class BQConnection implements Connection {
 
   public JobCreationMode getJobCreationMode() {
     return jobCreationMode;
+  }
+
+  /** BiqQuery does not support this well if at all. */
+  @Override
+  public void rollback() {
+    logger.debug("function call: rollback() not implemented ");
+  }
+
+  @Override
+  public void setAutoCommit(boolean autoCommit) {
+    this.autoCommitEnabled = autoCommit;
+  }
+
+  @Override
+  public void setReadOnly(boolean readOnly) {
+    throw new UnsupportedOperationException();
+  }
+
+  // =========================================================================
+  // Not Implemented
+
+  public void abort(Executor executor) throws SQLException {
+    throw new UnsupportedOperationException("Not implemented.");
+  }
+
+  public void setNetworkTimeout(Executor executor, int milliseconds) {
+    throw new UnsupportedOperationException("Not implemented.");
+  }
+
+  public int getNetworkTimeout() {
+    throw new UnsupportedOperationException("Not implemented.");
+  }
+
+  @Override
+  public PreparedStatement prepareStatement(String sql, int autoGeneratedKeys) {
+    throw new UnsupportedOperationException("Not implemented." + "prepareStatement(string,int)");
+  }
+
+  @Override
+  public PreparedStatement prepareStatement(
+      String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability) {
+    throw new UnsupportedOperationException(
+        "Not implemented." + "prepareStatement(String,int,int,int)");
+  }
+
+  @Override
+  public PreparedStatement prepareStatement(String sql, int[] columnIndexes) {
+    throw new UnsupportedOperationException("Not implemented." + "prepareStatement(String,int[])");
+  }
+
+  @Override
+  public PreparedStatement prepareStatement(String sql, String[] columnNames) {
+    throw new UnsupportedOperationException(
+        "Not implemented." + "prepareStatement(String,String[])");
+  }
+
+  @Override
+  public void releaseSavepoint(Savepoint savepoint) {
+    throw new UnsupportedOperationException("Not implemented." + "releaseSavepoint(Savepoint)");
+  }
+
+  @Override
+  public void rollback(Savepoint savepoint) {
+    throw new UnsupportedOperationException("Not implemented." + "rollback(savepoint)");
+  }
+
+  @Override
+  public void setCatalog(String catalog) {
+    throw new UnsupportedOperationException("Not implemented." + "setCatalog(catalog)");
+  }
+
+  @Override
+  public void setClientInfo(Properties properties) {
+    throw new UnsupportedOperationException("Not implemented." + "setClientInfo(properties)");
+  }
+
+  @Override
+  public void setClientInfo(String name, String value) {
+    throw new UnsupportedOperationException("Not implemented. setClientInfo(properties)");
+  }
+
+  @Override
+  public void setHoldability(int holdability) {
+    throw new UnsupportedOperationException("Not implemented." + "setHoldability(int)");
+  }
+
+  @Override
+  public Savepoint setSavepoint() {
+    throw new UnsupportedOperationException("Not implemented." + "setSavepoint()");
+  }
+
+  @Override
+  public Savepoint setSavepoint(String name) {
+    throw new UnsupportedOperationException("Not implemented." + "setSavepoint(String)");
+  }
+
+  @Override
+  public void setTransactionIsolation(int level) {
+    throw new UnsupportedOperationException("Not implemented." + "setTransactionIsolation(int)");
+  }
+
+  @Override
+  public void setTypeMap(Map<String, Class<?>> map) {
+    throw new UnsupportedOperationException(
+        "Not implemented." + "setTypeMap(Map<String, Class<?>>");
+  }
+
+  @Override
+  public <T> T unwrap(Class<T> arg0) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public String nativeSQL(String sql) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public CallableStatement prepareCall(
+      String sql, int resultSetType, int resultSetConcurrency, int resultSetHoldability) {
+    throw new UnsupportedOperationException("Not implemented." + "prepareCall(string,int,int,int)");
+  }
+
+  @Override
+  public CallableStatement prepareCall(String sql) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public CallableStatement prepareCall(String sql, int resultSetType, int resultSetConcurrency) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public NClob createNClob() {
+    throw new UnsupportedOperationException("Not implemented." + "createNClob()");
+  }
+
+  @Override
+  public SQLXML createSQLXML() throws SQLException {
+    throw new UnsupportedOperationException("Not implemented." + "createSQLXML()");
   }
 }

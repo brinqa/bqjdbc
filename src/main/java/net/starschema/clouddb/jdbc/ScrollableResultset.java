@@ -62,6 +62,7 @@ import org.slf4j.LoggerFactory;
 abstract class ScrollableResultset<T> implements java.sql.ResultSet {
 
   Logger logger = LoggerFactory.getLogger(ScrollableResultset.class);
+
   /** Reference for holding the current InputStream given back by get methods */
   protected InputStream Strm = null;
 
@@ -73,6 +74,7 @@ abstract class ScrollableResultset<T> implements java.sql.ResultSet {
 
   /** This holds the current position of the cursor */
   protected int Cursor = -1;
+
   /** This holds if the resultset is closed or not */
   protected Boolean Closed = false;
 
@@ -1557,7 +1559,9 @@ abstract class ScrollableResultset<T> implements java.sql.ResultSet {
     throw new BQSQLException("Not implemented." + "setFetchSize(int)");
   }
 
-  /** @throws SQLException if Cursor is not in a valid Position */
+  /**
+   * @throws SQLException if Cursor is not in a valid Position
+   */
   public void ThrowCursorNotValidExeption() throws SQLException {
     if (this.RowsofResult == null || this.RowsofResult.length == 0) {
       throw new BQSQLException(

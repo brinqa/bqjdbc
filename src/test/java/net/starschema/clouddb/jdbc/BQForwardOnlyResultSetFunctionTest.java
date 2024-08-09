@@ -775,16 +775,29 @@ public class BQForwardOnlyResultSetFunctionTest extends CommonTestsForResultSets
     final long millis = 1321013532000L;
 
     // spotless:off
-    String sql = "SELECT " +
-        "TIMESTAMP('" + dateTime + "') AS ts, " +
-        "DATETIME('" + dateTime + "') AS dt, " +
-        "DATE('" + date + "') AS d, " +
-        "TIME(12, 12, 12) AS t\n" +
-        "UNION ALL SELECT " +
-        "CASE WHEN 1 = 0 THEN TIMESTAMP('" + dateTime + "') ELSE NULL END, " +
-        "CASE WHEN 1 = 0 THEN DATETIME('" + dateTime + "') ELSE NULL END, " +
-        "CASE WHEN 1 = 0 THEN DATE('" + date + "') ELSE NULL END, " +
-        "CASE WHEN 1 = 0 THEN TIME(12, 12, 12) ELSE NULL END";
+    String sql =
+        "SELECT "
+            + "TIMESTAMP('"
+            + dateTime
+            + "') AS ts, "
+            + "DATETIME('"
+            + dateTime
+            + "') AS dt, "
+            + "DATE('"
+            + date
+            + "') AS d, "
+            + "TIME(12, 12, 12) AS t\n"
+            + "UNION ALL SELECT "
+            + "CASE WHEN 1 = 0 THEN TIMESTAMP('"
+            + dateTime
+            + "') ELSE NULL END, "
+            + "CASE WHEN 1 = 0 THEN DATETIME('"
+            + dateTime
+            + "') ELSE NULL END, "
+            + "CASE WHEN 1 = 0 THEN DATE('"
+            + date
+            + "') ELSE NULL END, "
+            + "CASE WHEN 1 = 0 THEN TIME(12, 12, 12) ELSE NULL END";
     // spotless:on
 
     ResultSet results = stmt.executeQuery(sql);

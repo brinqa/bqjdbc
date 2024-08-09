@@ -67,6 +67,7 @@ public class Oauth2Bigquery {
 
   /** Log4j logger, for debugging. */
   static Logger logger = LoggerFactory.getLogger(Oauth2Bigquery.class);
+
   /** Browsers to try: */
   static final String[] browsers = {
     "google-chrome",
@@ -79,6 +80,7 @@ public class Oauth2Bigquery {
     "kazehakase",
     "mozilla"
   };
+
   /** Application name set on bigquery connection */
   static final String applicationName = "BigQuery JDBC Driver";
 

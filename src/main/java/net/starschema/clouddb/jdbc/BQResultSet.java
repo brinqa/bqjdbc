@@ -45,6 +45,7 @@ public class BQResultSet extends ScrollableResultset<Object> implements java.sql
 
   /** This Reference is for storing the GetQueryResultsResponse got from bigquery */
   private GetQueryResultsResponse Result = null;
+
   /** This Reference is for storing the Reference for the Statement which created this Resultset */
   private BQStatement Statementreference = null;
 

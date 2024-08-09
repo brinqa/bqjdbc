@@ -38,7 +38,7 @@ public class ConnectionFromResources {
 
     final Connection connection = DriverManager.getConnection(jdbcUrl, properties);
     final BQConnection bqConnection = (BQConnection) connection;
-    logger.info("Created connection from {} to {}", propertiesFilePath, bqConnection.getURLPART());
+    logger.info("Created connection from {} to {}", propertiesFilePath, bqConnection.getURLPart());
     return bqConnection;
   }
 }

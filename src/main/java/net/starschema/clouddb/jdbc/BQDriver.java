@@ -58,10 +58,13 @@ public class BQDriver implements java.sql.Driver {
 
   /** Instance log4j.Logger */
   static Logger logg = LoggerFactory.getLogger(BQDriver.class);
+
   /** Url_Prefix for using this driver */
   private static final String URL_PREFIX = "jdbc:BQDriver:";
+
   /** MAJOR Version of the driver */
   private static final int MAJOR_VERSION = 1;
+
   /** Minor Version of the driver */
   private static final int MINOR_VERSION = 9;
 

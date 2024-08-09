@@ -59,6 +59,7 @@ public class BQScrollableResultSet extends ScrollableResultset<Object>
 
   /** Specifies which mode of BI Engine acceleration was performed (if any). */
   private final @Nullable String biEngineMode;
+
   /**
    * In case of DISABLED or PARTIAL bi_engine_mode, these contain the explanatory reasons as to why
    * BI Engine could not accelerate. In case the full query was accelerated, this field is not

@@ -60,7 +60,7 @@ public class BQSQLException extends SQLException {
     StringWriter sw = new StringWriter();
     super.printStackTrace(new PrintWriter(sw));
     String stacktrace = sw.toString();
-    this.logger.debug("SQLexception " + stacktrace);
+    this.logger.debug("SQLexception {}", stacktrace);
   }
 
   /**
@@ -75,7 +75,7 @@ public class BQSQLException extends SQLException {
     StringWriter sw = new StringWriter();
     super.printStackTrace(new PrintWriter(sw));
     String stacktrace = sw.toString();
-    this.logger.debug(reason + stacktrace);
+    this.logger.debug("{}{}", reason, stacktrace);
   }
 
   /**
